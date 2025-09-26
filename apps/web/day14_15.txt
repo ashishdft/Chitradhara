@@ -1,0 +1,88 @@
+[dotenv@17.2.2] injecting env (17) from .env.local -- tip: 📡 auto-backup env with Radar: https://dotenvx.com/radar
+
+Running 3 tests using 1 worker
+
+[dotenv@17.2.2] injecting env (0) from .env.local -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+=== BEFORE EACH TEST ===
+➡️ Navigating to login page...
+=== AFTER EACH TEST ===
+  ✘  1 [chromium] › tests/day15.spec.ts:68:7 › Day 15 – Upload, Watch, Delete, Restore › Watch page loads signed URL (1.3s)
+[dotenv@17.2.2] injecting env (0) from .env.local -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+=== BEFORE EACH TEST ===
+➡️ Navigating to login page...
+=== AFTER EACH TEST ===
+  ✘  2 [chromium] › tests/day15.spec.ts:75:7 › Day 15 – Upload, Watch, Delete, Restore › Soft delete moves video to Trash (912ms)
+[dotenv@17.2.2] injecting env (0) from .env.local -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+=== BEFORE EACH TEST ===
+➡️ Navigating to login page...
+=== AFTER EACH TEST ===
+  ✘  3 [chromium] › tests/day15.spec.ts:89:7 › Day 15 – Upload, Watch, Delete, Restore › Restore moves video back (886ms)
+
+
+  1) [chromium] › tests/day15.spec.ts:68:7 › Day 15 – Upload, Watch, Delete, Restore › Watch page loads signed URL 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+    [2m  - navigating to "http://localhost:3000/login", waiting until "domcontentloaded"[22m
+
+
+      10 | async function login(page) {
+      11 |   console.log("➡️ Navigating to login page...");
+    > 12 |   await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded" });
+         |              ^
+      13 |
+      14 |   // Fill email + password
+      15 |   await page.getByPlaceholder("Email").fill(TEST_USER_EMAIL);
+        at login (/mnt/c/Users/91739/Documents/CD_project/Chitradhara/apps/web/tests/day15.spec.ts:12:14)
+        at /mnt/c/Users/91739/Documents/CD_project/Chitradhara/apps/web/tests/day15.spec.ts:41:11
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/day15-Day-15-–-Upload-Watc-476a8-Watch-page-loads-signed-URL-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › tests/day15.spec.ts:75:7 › Day 15 – Upload, Watch, Delete, Restore › Soft delete moves video to Trash 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+    [2m  - navigating to "http://localhost:3000/login", waiting until "domcontentloaded"[22m
+
+
+      10 | async function login(page) {
+      11 |   console.log("➡️ Navigating to login page...");
+    > 12 |   await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded" });
+         |              ^
+      13 |
+      14 |   // Fill email + password
+      15 |   await page.getByPlaceholder("Email").fill(TEST_USER_EMAIL);
+        at login (/mnt/c/Users/91739/Documents/CD_project/Chitradhara/apps/web/tests/day15.spec.ts:12:14)
+        at /mnt/c/Users/91739/Documents/CD_project/Chitradhara/apps/web/tests/day15.spec.ts:41:11
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/day15-Day-15-–-Upload-Watc-98270-delete-moves-video-to-Trash-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › tests/day15.spec.ts:89:7 › Day 15 – Upload, Watch, Delete, Restore › Restore moves video back 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/login
+    Call log:
+    [2m  - navigating to "http://localhost:3000/login", waiting until "domcontentloaded"[22m
+
+
+      10 | async function login(page) {
+      11 |   console.log("➡️ Navigating to login page...");
+    > 12 |   await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded" });
+         |              ^
+      13 |
+      14 |   // Fill email + password
+      15 |   await page.getByPlaceholder("Email").fill(TEST_USER_EMAIL);
+        at login (/mnt/c/Users/91739/Documents/CD_project/Chitradhara/apps/web/tests/day15.spec.ts:12:14)
+        at /mnt/c/Users/91739/Documents/CD_project/Chitradhara/apps/web/tests/day15.spec.ts:41:11
+
+    attachment #1: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/day15-Day-15-–-Upload-Watc-ad12c-re-Restore-moves-video-back-chromium/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    [chromium] › tests/day15.spec.ts:68:7 › Day 15 – Upload, Watch, Delete, Restore › Watch page loads signed URL 
+    [chromium] › tests/day15.spec.ts:75:7 › Day 15 – Upload, Watch, Delete, Restore › Soft delete moves video to Trash 
+    [chromium] › tests/day15.spec.ts:89:7 › Day 15 – Upload, Watch, Delete, Restore › Restore moves video back 

@@ -1,0 +1,1134 @@
+
+===== FILE: app/about/page.tsx =====
+
+export default function AboutPage() {
+  return <h1>About Chitradhara 🎥</h1>;
+}
+
+
+===== FILE: app/api/upload/route.ts =====
+
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // server-only key
+);
+
+export async function POST(req: Request) {
+  try {
+    const formData = await req.formData();
+    const file = formData.get("file") as File;
+    const title = formData.get("title") as string;
+    const userId = formData.get("userId") as string;
+    const userEmail = formData.get("userEmail") as string;
+
+    if (!file || !userId) {
+      return NextResponse.json({ error: "Missing file or user" }, { status: 400 });
+    }
+
+    const filePath = `videos/${userId}/${Date.now()}-${file.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from("videos")
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicUrlData } = supabase.storage
+      .from("videos")
+      .getPublicUrl(filePath);
+
+    const { error: insertError } = await supabase.from("videos").insert([
+      {
+        title: title || file.name,
+        url: publicUrlData.publicUrl,
+        creator_id: userId,
+        creator_email: userEmail,
+      },
+    ]);
+
+    if (insertError) throw insertError;
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+
+===== FILE: app/feed/page.tsx =====
+
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import VideoCard from "@/components/VideoCard";
+
+export default function FeedPage() {
+  const [loading, setLoading] = useState(true);
+  const [videos, setVideos] = useState<any[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from("videos")
+        .select("id,title,file_path,creator_email,created_at")
+        .order("created_at", { ascending: false });
+
+      if (!error) {
+        const withUrls = data?.map(v => ({
+          ...v,
+          url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${v.file_path}`
+        })) ?? [];
+        setVideos(withUrls);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) return <div className="p-6">Loading…</div>;
+  if (videos.length === 0) return <div className="p-6">No videos yet.</div>;
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 p-6">
+      {videos.map(v => <VideoCard key={v.id} video={v} />)}
+    </div>
+  );
+}
+
+
+===== FILE: app/layout.tsx =====
+
+import AuthProvider from "@/components/AuthProvider";
+import { Toaster } from "react-hot-toast";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <AuthProvider>
+          {children}
+          <Toaster position="top-right" />
+        </AuthProvider>
+      </body>
+    </html>
+  );
+}
+
+
+===== FILE: app/login/page.tsx =====
+
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase";
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
+import Layout from "../../components/Layout";
+import toast, { Toaster } from "react-hot-toast";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  // Google Login
+  const handleGoogleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      toast.success("✅ Logged in with Google!");
+      router.push("/profile");
+    } catch (err: any) {
+      setError(err.message);
+      toast.error("❌ " + err.message);
+    }
+  };
+
+  // Email Signup
+  const handleSignup = async () => {
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      toast.success("✅ Account created & logged in!");
+      router.push("/profile");
+    } catch (err: any) {
+      setError(err.message);
+      toast.error("❌ " + err.message);
+    }
+  };
+
+  // Email Login
+  const handleLogin = async () => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      toast.success("✅ Logged in!");
+      router.push("/profile");
+    } catch (err: any) {
+      setError(err.message);
+      toast.error("❌ " + err.message);
+    }
+  };
+
+  return (
+    <Layout>
+      {/* Toaster is needed to show notifications */}
+      <Toaster position="top-right" />
+
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+        <div className="bg-white shadow-md rounded-2xl p-6 w-96">
+          <h1 className="text-2xl font-bold mb-4 text-center">
+            Login to Chitradhara 🎥
+          </h1>
+
+          {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
+
+          <input
+            type="email"
+            placeholder="Email"
+            className="w-full border rounded-lg px-3 py-2 mb-3"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+
+          <input
+            type="password"
+            placeholder="Password"
+            className="w-full border rounded-lg px-3 py-2 mb-3"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleLogin}
+              className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700"
+            >
+              Login
+            </button>
+            <button
+              onClick={handleSignup}
+              className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
+            >
+              Signup
+            </button>
+          </div>
+
+          <hr className="my-4" />
+
+          <button
+            onClick={handleGoogleLogin}
+            className="w-full bg-red-500 text-white py-2 rounded-lg hover:bg-red-600"
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </div>
+    </Layout>
+  );
+}
+
+
+===== FILE: app/page.tsx =====
+
+"use client";
+
+import { useEffect, useState } from "react";
+import Layout from "@/components/Layout";
+import Hello from "@/components/Hello";
+import VideoCard from "@/components/VideoCard";
+import { supabase } from "@/src/lib/supabase";
+
+export default function Home() {
+  const [loading, setLoading] = useState(true);
+  const [videos, setVideos] = useState<any[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from("videos")
+        .select("id,title,file_path,creator_email,created_at")
+        .order("created_at", { ascending: false });
+
+      if (!error) {
+        const withUrls =
+          data?.map((v) => ({
+            ...v,
+            url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${v.file_path}`,
+          })) ?? [];
+        setVideos(withUrls);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  return (
+    <Layout>
+      <main className="flex flex-col items-center gap-6 mt-20">
+        {/* Hero Section — rendered once */}
+        <h1 className="text-4xl font-bold text-center text-indigo-600">
+          Welcome to Chitradhara 🎥
+        </h1>
+        <Hello name="Ashish" />
+        <p className="text-lg text-gray-700 text-center max-w-xl">
+          A modern video platform for creators and communities. Upload, share,
+          and connect with the world.
+        </p>
+        <a
+          href="https://github.com/ashishdft/Chitradhara"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+        >
+          View on GitHub
+        </a>
+
+        {/* Latest Videos Section */}
+        <section className="w-full max-w-6xl mt-12 px-6">
+          <h2 className="text-2xl font-semibold mb-6">Latest Videos</h2>
+          {loading ? (
+            <div className="p-6">Loading…</div>
+          ) : videos.length === 0 ? (
+            <div className="p-6">No videos yet.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {videos.map((v) => (
+                <VideoCard key={v.id} video={v} />
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </Layout>
+  );
+}
+
+
+===== FILE: app/profile/page.tsx =====
+
+"use client";
+
+import { useEffect, useState } from "react";
+import RequireAuth from "@/components/RequireAuth";
+import { useAuth } from "@/src/hooks/useAuth"; // ✅ new hook
+import { supabase } from "@/src/lib/supabase";
+import VideoCard from "@/components/VideoCard";
+
+export default function ProfilePage() {
+  return (
+    <RequireAuth>
+      <ProfileContent />
+    </RequireAuth>
+  );
+}
+
+function ProfileContent() {
+  const { user, loading: authLoading } = useAuth(); // ✅ from context
+  const [loading, setLoading] = useState(true);
+  const [videos, setVideos] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("videos")
+        .select("id,title,file_path,creator_email,created_at")
+        .eq("creator_id", user.uid)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        const withUrls =
+          data?.map((v) => ({
+            ...v,
+            url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${v.file_path}`,
+          })) ?? [];
+        setVideos(withUrls);
+      }
+      setLoading(false);
+    })();
+  }, [user]);
+
+  if (authLoading || loading) return <div className="p-6">Loading…</div>;
+  if (error) return <div className="p-6 text-red-600">{error}</div>;
+  if (videos.length === 0) return <div className="p-6">No videos uploaded yet.</div>;
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 p-6">
+      {videos.map((v) => (
+        <VideoCard key={v.id} video={v} />
+      ))}
+    </div>
+  );
+}
+
+
+===== FILE: app/signup/page.tsx =====
+
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+export default function SignupPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // 🔹 Replace this with your signup logic (Firebase/Auth API etc.)
+    const success = true; // dummy success
+
+    if (success) {
+      // ✅ After signup → redirect to homepage
+      router.push("/");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen">
+      <h1 className="text-2xl font-bold mb-4">Sign Up</h1>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2 w-64">
+        <input
+          type="email"
+          placeholder="Email"
+          className="border px-3 py-2 rounded"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          className="border px-3 py-2 rounded"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button
+          type="submit"
+          className="bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
+        >
+          Sign Up
+        </button>
+      </form>
+    </div>
+  );
+}
+
+
+===== FILE: app/upload/page.tsx =====
+
+"use client";
+
+import React, { useState } from "react";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { useRouter } from "next/navigation";
+import toast, { Toaster } from "react-hot-toast";
+import { auth, db, storage } from "@/lib/firebase";
+import Layout from "../../components/Layout";
+
+
+
+export default function UploadPage() {
+  const router = useRouter();
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleUpload = async () => {
+    if (loading) return;
+    setLoading(true);
+
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error("You must be logged in to upload.");
+        setLoading(false);
+        return;
+      }
+
+      if (!file) {
+        toast.error("Please choose a video file.");
+        setLoading(false);
+        return;
+      }
+
+      // Safety check: ensure storage is a valid object
+      if (!storage) {
+        console.error("Firebase storage is undefined!", storage);
+        toast.error("Firebase Storage not initialized. Check firebase init.");
+        setLoading(false);
+        return;
+      }
+
+      // create a storage reference
+      const storageRef = ref(storage, `videos/${user.uid}/${file.name}`);
+
+      // upload
+      const snapshot = await uploadBytes(storageRef, file);
+
+      // fetch download URL
+      const url = await getDownloadURL(snapshot.ref);
+
+      // save metadata in Firestore
+      await addDoc(collection(db, "videos"), {
+        title: title || file.name,
+        url,
+        creator: user.email || null,
+        creatorId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      toast.success("Video uploaded!");
+      setFile(null);
+      setTitle("");
+      router.push("/profile");
+    } catch (err: any) {
+      console.error("Upload failed:", err);
+      toast.error("Upload failed: " + (err?.message || "Unknown error"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Layout>
+      <Toaster position="top-right" />
+      <div className="p-6 max-w-xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4">Upload Video</h1>
+
+        <input
+          type="text"
+          placeholder="Video title (optional)"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="border p-2 mb-3 w-full"
+        />
+
+        <input
+          type="file"
+          accept="video/*"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          className="mb-4"
+        />
+
+        <div className="flex gap-2">
+          <button
+            onClick={handleUpload}
+            disabled={loading}
+            className="px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-60"
+          >
+            {loading ? "Uploading..." : "Upload"}
+          </button>
+        </div>
+      </div>
+    </Layout>
+  );
+}
+
+
+===== FILE: app/watch/[id]/page.tsx =====
+
+import { notFound } from "next/navigation";
+
+type Props = {
+  params: { id: string };
+};
+
+const dummyVideos = {
+  "1": {
+    title: "Exploring Varanasi Ghats",
+    channel: "Chitradhara",
+    views: "1.2K",
+    description: "A journey through the ghats of Varanasi...",
+    videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
+  },
+  "2": {
+    title: "Street Food of Lucknow",
+    channel: "Chitradhara",
+    views: "3.5K",
+    description: "Delicious street food adventures in Lucknow...",
+    videoUrl: "https://www.w3schools.com/html/movie.mp4",
+  },
+};
+
+export default function WatchPage({ params }: Props) {
+  const video = dummyVideos[params.id];
+
+  if (!video) return notFound();
+
+  return (
+    <main className="p-6">
+      {/* Video Player */}
+      <video
+        src={video.videoUrl}
+        controls
+        className="w-full rounded-2xl shadow-md"
+      />
+
+      {/* Video Info */}
+      <h1 className="text-2xl font-bold mt-4">{video.title}</h1>
+      <p className="text-gray-600">{video.channel} • {video.views} views</p>
+      <p className="mt-2">{video.description}</p>
+    </main>
+  );
+}
+
+
+===== FILE: components/AuthProvider.tsx =====
+
+"use client";
+
+import React, { ReactNode, useEffect, useState } from "react";
+import { onAuthStateChanged, getAuth, User } from "firebase/auth";
+import { app } from "@/src/lib/firebase"; // adjust path if needed
+
+type AuthContextType = {
+  user: User | null;
+  loading: boolean;
+};
+
+export const AuthContext = React.createContext<AuthContextType>({
+  user: null,
+  loading: true,
+});
+
+export default function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const auth = getAuth(app);
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+
+
+===== FILE: components/Hello.tsx =====
+
+export default function Hello(props: { name: string }) {
+  return <h2>Hello, {props.name}! 👋</h2>;
+}
+
+
+===== FILE: components/Layout.tsx =====
+
+"use client";
+
+import Link from "next/link";
+import React from "react";
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="border-b">
+        <nav className="max-w-6xl mx-auto p-4 flex items-center gap-4">
+          <Link href="/" className="font-bold text-lg">Chitradhara 🎥</Link>
+          <div className="ml-auto flex items-center gap-4">
+            <Link href="/feed" className="hover:underline">Feed</Link>
+            <Link href="/profile" className="hover:underline">Profile</Link>
+            <Link href="/upload" className="hover:underline">Upload</Link>
+            {/* TODO: Add Login/Logout controls */}
+          </div>
+        </nav>
+      </header>
+      <main className="flex-1">{children}</main>
+      <footer className="border-t">
+        <div className="max-w-6xl mx-auto p-4 text-sm text-gray-500">
+          © {new Date().getFullYear()} Chitradhara
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+
+===== FILE: components/Navbar.tsx =====
+
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { auth } from "@/lib/firebase";
+import { signOut, onAuthStateChanged, User } from "firebase/auth";
+
+export default function Navbar() {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    alert("👋 Logged out!");
+  };
+
+  return (
+    <nav className="flex justify-between items-center px-6 py-4 bg-indigo-600 text-white">
+      {/* Logo / Title */}
+      <Link href="/" className="text-xl font-bold hover:underline">
+        Chitradhara 🎥
+      </Link>
+
+      {/* Navigation Links */}
+      <div className="flex items-center gap-4">
+        <Link href="/about" className="hover:underline">
+          About
+        </Link>
+
+        {!user ? (
+          <>
+            <Link href="/login" className="hover:underline">
+              Login
+            </Link>
+            <Link href="/signup" className="hover:underline">
+              Sign Up
+            </Link>
+          </>
+        ) : (
+          <>
+            <span className="text-sm text-gray-200">
+              {user.email}
+            </span>
+            <button
+              onClick={handleLogout}
+              className="bg-red-500 px-3 py-1 rounded-lg hover:bg-red-600"
+            >
+              Logout
+            </button>
+          </>
+        )}
+      </div>
+    </nav>
+  );
+}
+
+
+===== FILE: components/ProtectedRoute.tsx =====
+
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+
+export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthenticated(true);
+      } else {
+        router.push("/login");
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  if (loading) return <p className="text-center mt-20">Loading...</p>;
+
+  return authenticated ? <>{children}</> : null;
+}
+
+
+===== FILE: components/RequireAuth.tsx =====
+
+"use client";
+
+import { ReactNode, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useCurrentUser } from "@/lib/useCurrentUser";
+
+export default function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, checking } = useCurrentUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!checking && !user) router.replace("/login");
+  }, [checking, user, router]);
+
+  if (checking) return <div className="p-6 text-center">Checking session…</div>;
+  if (!user) return null;
+  return <>{children}</>;
+}
+
+
+===== FILE: components/VideoCard.tsx =====
+
+"use client";
+
+import { useEffect, useState } from "react";
+import Layout from "@/components/Layout";
+import Hello from "@/components/Hello";
+import VideoCard from "@/components/VideoCard";
+import { supabase } from "@/lib/supabase";
+
+export default function Home() {
+  const [loading, setLoading] = useState(true);
+  const [videos, setVideos] = useState<any[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from("videos")
+        .select("id,title,file_path,creator_email,created_at")
+        .order("created_at", { ascending: false });
+
+      if (!error) {
+        const withUrls =
+          data?.map((v) => ({
+            ...v,
+            url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/videos/${v.file_path}`,
+          })) ?? [];
+        setVideos(withUrls);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  return (
+    <Layout>
+      <main className="flex flex-col items-center gap-6 mt-20">
+        <h1 className="text-4xl font-bold text-center text-indigo-600">
+          Welcome to Chitradhara 🎥
+        </h1>
+        <Hello name="Ashish" />
+        <p className="text-lg text-gray-700 text-center max-w-xl">
+          A modern video platform for creators and communities. Upload, share,
+          and connect with the world.
+        </p>
+
+        <section className="w-full max-w-6xl mt-12 px-6">
+          <h2 className="text-2xl font-semibold mb-6">Latest Videos</h2>
+          {loading ? (
+            <div className="p-6">Loading…</div>
+          ) : videos.length === 0 ? (
+            <div className="p-6">No videos yet.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {videos.map((v) => (
+                <VideoCard key={v.id} video={v} />
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </Layout>
+  );
+}
+
+
+===== FILE: components/VideoUpload.js =====
+
+"use client";
+import { useState } from "react";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { storage } from "../firebaseConfig";
+
+export default function VideoUpload() {
+  const [video, setVideo] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [url, setUrl] = useState("");
+
+  const handleUpload = () => {
+    if (!video) return alert("Please choose a video first!");
+
+    const storageRef = ref(storage, `videos/${video.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, video);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const percent = Math.round(
+          (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+        );
+        setProgress(percent);
+      },
+      (error) => {
+        console.error(error);
+      },
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+          setUrl(downloadURL);
+          alert("Video uploaded successfully!");
+        });
+      }
+    );
+  };
+
+  return (
+    <div className="p-4 border rounded-xl shadow-md max-w-md mx-auto">
+      <h2 className="text-xl font-bold mb-3">Upload a Video 🎥</h2>
+      <input
+        type="file"
+        accept="video/*"
+        onChange={(e) => setVideo(e.target.files[0])}
+      />
+      <button
+        onClick={handleUpload}
+        className="bg-blue-500 text-white px-4 py-2 rounded-lg mt-3"
+      >
+        Upload
+      </button>
+      {progress > 0 && <p className="mt-2">Progress: {progress}%</p>}
+      {url && (
+        <video controls className="mt-3 w-full">
+          <source src={url} type="video/mp4" />
+        </video>
+      )}
+    </div>
+  );
+}
+
+
+===== FILE: src/lib/firebase.ts =====
+
+// apps/web/lib/firebase.ts
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
+
+console.log("🔥 Firebase config:", firebaseConfig);
+
+// ✅ Initialize app only once
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+// ✅ Initialize services
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+export const firebaseApp = initializeApp(firebaseConfig);
+export { app };
+
+
+===== FILE: src/lib/supabase.ts =====
+
+// apps/web/src/lib/supabase.ts
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+
+===== FILE: src/lib/supabaseClient.ts =====
+
+import { createClient } from '@supabase/supabase-js'
+
+// Your Supabase credentials
+const supabaseUrl = "https://cmrzgardwyrtefhvgcal.supabase.co"
+const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtcnpnYXJkd3lydGVmaHZnY2FsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODkxNzYsImV4cCI6MjA3MjM2NTE3Nn0.t_FXwt5gp4cxMYlUzGa2cmpmneyYIh8lt0NuFRrLXE8"
+
+// Create a single supabase client for the whole app
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+
+===== FILE: src/lib/useCurrentUser.ts =====
+
+"use client";
+
+import { useEffect, useState } from "react";
+import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+import { app } from "@/lib/firebase"; // your firebase.ts init
+
+export function useCurrentUser() {
+  const [user, setUser] = useState<User | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    const auth = getAuth(app);
+    return onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setChecking(false);
+    });
+  }, []);
+
+  return { user, checking };
+}
+
+
+===== FILE: tests/day12.spec.ts =====
+
+import { test, expect } from "@playwright/test";
+
+const BASE_URL = "http://localhost:3000"; // adjust if needed
+
+test.describe("Day 12 Verification", () => {
+  test("Feed page loads videos or empty state", async ({ page }) => {
+    await page.goto(`${BASE_URL}/feed`);
+    await expect(
+      page.locator("text=Loading videos…").or(
+        page.locator("text=No videos uploaded yet").or(page.locator("video"))
+      )
+    ).toBeVisible();
+  });
+
+  test("Profile redirects to login when logged out", async ({ page }) => {
+    await page.goto(`${BASE_URL}/profile`);
+    await expect(page).toHaveURL(/.*login/);
+  });
+
+  test("Navbar links exist", async ({ page }) => {
+    await page.goto(BASE_URL);
+    await expect(page.locator("a:has-text('Feed')")).toBeVisible();
+    await expect(page.locator("a:has-text('Profile')")).toBeVisible();
+    await expect(page.locator("a:has-text('Upload')")).toBeVisible();
+  });
+
+  // Optional: requires a test Firebase user
+  test("Profile shows only current user's videos after login", async ({ page }) => {
+    await page.goto(`${BASE_URL}/login`);
+    await page.fill('input[type="email"]', "testuser@example.com");
+    await page.fill('input[type="password"]', "password123");
+    await page.click('button:has-text("Login")');
+
+    await page.goto(`${BASE_URL}/profile`);
+    const cards = await page.locator("video").count();
+    expect(cards).toBeGreaterThanOrEqual(0); // adjust with stricter checks if needed
+  });
+});
+
+
+===== FILE: utils/requireAuth.tsx =====
+
+import { useEffect } from "react";
+import { useRouter } from "next/router";
+import { useSession } from "next-auth/react";
+
+export default function requireAuth(Component: any) {
+  return function ProtectedPage(props: any) {
+    const { data: session, status } = useSession();
+    const router = useRouter();
+
+    useEffect(() => {
+      if (status === "unauthenticated") {
+        router.push("/login");
+      }
+    }, [status, router]);
+
+    if (status === "loading") {
+      return <p>Loading...</p>;
+    }
+
+    return <Component {...props} />;
+  };
+}
+
+const path = require("path");
+
+/** @type {import('next').NextConfig} */
+module.exports = {
+  reactStrictMode: true,
+  webpack(config) {
+    config.resolve.alias["@"] = path.resolve(__dirname, "src");
+    return config;
+  },
+};
+
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+
+    "baseUrl": ".",                      
+    "paths": {
+      "@/*": ["*"]                       
+    },
+
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.56.1",
+    "firebase": "^12.2.1",
+    "framer-motion": "^12.23.12",
+    "next": "15.5.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-firebase-hooks": "^5.1.1",
+    "react-hot-toast": "^2.6.0",
+    "sonner": "^2.0.7"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.55.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
